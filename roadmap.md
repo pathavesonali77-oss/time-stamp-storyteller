@@ -29,3 +29,9 @@
 - [x] Temporary chat timing log removed
 - [x] Full re-run verified: 3/3 panels rendered, same room/props kept across panels
 - [x] Final video encoding reduced to 1280x720 @ 24fps (was 1920x1080 @ 30fps)
+
+## Cloned into this project (2026-09-07)
+- [x] Project cloned from moment-render-magic and running here
+- [x] 4 image keys + 5 writing keys stored as secrets; all 5 writing keys verified 200 on MiniMax M3 (free)
+- [ ] End-to-end pass with the sample chapter: first panels must visually match 0:05-0:35
+- [ ] Verify continuation spans (no text between two marks) draw their own moment, not a distant scene
