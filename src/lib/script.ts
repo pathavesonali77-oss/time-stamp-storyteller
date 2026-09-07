@@ -60,6 +60,12 @@ export function scriptEndTime(raw: string): number {
  * boundary pair with no text is merged into the previous segment so its time
  * still belongs to the timeline.
  */
+/** Rough spoken length of a line, used only where the script gives no mark. */
+function estimateSpeech(text: string): number {
+  const words = text.trim().split(/\s+/).filter(Boolean).length;
+  return Math.max(4, Math.min(12, Math.round(words / 2.5)));
+}
+
 export function parseScript(raw: string): Segment[] {
   const marks: { at: number; time: number; len: number }[] = [];
   TS.lastIndex = 0;
@@ -100,23 +106,44 @@ export function parseScript(raw: string): Segment[] {
     rawSegs.push({ start, end, text });
   };
 
+  // Two layouts exist in the wild:
+  //   leading  — "(0:05) text ... (0:13) text ..."  the mark opens its line
+  //   trailing — "text ... (0:05)\ntext ... (0:13)" the mark closes its line
+  // In the trailing layout the text BEFORE a mark is what is spoken up to it,
+  // so attributing it to the following span shifts every panel one line late.
+  // Decide once, from the whole script, then slice accordingly.
+  const firstText = raw.slice(0, marks[0]!.at).replace(/\s+/g, " ").trim();
+  const trailingHits = marks.filter((mk) =>
+    /^[^\S\n]*$/.test(raw.slice(mk.at + mk.len, raw.indexOf("\n", mk.at) === -1 ? raw.length : raw.indexOf("\n", mk.at)))
+  ).length;
+  const trailing = firstText.length > 0 && trailingHits > marks.length / 2;
 
+  if (trailing) {
+    // Segment i = the text that ends at mark i, spanning the previous mark → mark i.
+    let prevTime = Math.max(0, marks[0]!.time - estimateSpeech(firstText));
+    let cursor = 0;
+    for (const mk of marks) {
+      const text = raw.slice(cursor, mk.at).replace(/\s+/g, " ").trim();
+      push(prevTime, mk.time, text);
+      prevTime = mk.time;
+      cursor = mk.at + mk.len;
+    }
+    const tailT = raw.slice(cursor).replace(/\s+/g, " ").trim();
+    if (tailT) push(prevTime, prevTime + estimateSpeech(tailT), tailT);
+  } else {
+    for (let i = 0; i < marks.length - 1; i++) {
+      const a = marks[i]!;
+      const b = marks[i + 1]!;
+      const text = raw.slice(a.at + a.len, b.at).replace(/\s+/g, " ").trim();
+      push(a.time, b.time, text);
+    }
 
-  for (let i = 0; i < marks.length - 1; i++) {
-    const a = marks[i]!;
-    const b = marks[i + 1]!;
-    const text = raw.slice(a.at + a.len, b.at).replace(/\s+/g, " ").trim();
-    push(a.time, b.time, text);
+    // Trailing text after the last timestamp (script may end without a closing mark)
+    const last = marks[marks.length - 1]!;
+    const tail = raw.slice(last.at + last.len).replace(/\s+/g, " ").trim();
+    if (tail) push(last.time, last.time + estimateSpeech(tail), tail);
   }
 
-  // Trailing text after the last timestamp (script may end without a closing mark)
-  const last = marks[marks.length - 1]!;
-  const tail = raw.slice(last.at + last.len).replace(/\s+/g, " ").trim();
-  if (tail) {
-    const words = tail.split(" ").length;
-    const dur = Math.max(4, Math.min(12, Math.round(words / 2.5)));
-    push(last.time, last.time + dur, tail);
-  }
 
   // NOTHING is merged: every timestamp span keeps its own segment, so the run
   // always produces exactly one image per timestamp. Spans shorter than one
