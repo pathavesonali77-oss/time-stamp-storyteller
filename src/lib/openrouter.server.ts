@@ -134,14 +134,13 @@ async function callOpenRouter(user: string, opts: ChatOptions): Promise<string> 
         };
         const text = (json.choices?.[0]?.message?.content ?? "").trim();
         if (text) {
-          // Hand the next call to the next key so the per-minute allowance is
-          // spread across the whole pool.
-          advanceKey(keys.length);
+          // Stay on this key: the pool only moves on when a key is parked
+          // (daily quota, rate limit or a dead key), never after a good call.
           return text;
         }
         lastErr = json.error?.message ?? "empty completion";
-        advanceKey(keys.length);
         continue;
+
       }
 
       const body = (await res.text().catch(() => "")).slice(0, 600);
